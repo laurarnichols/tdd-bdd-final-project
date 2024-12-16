@@ -27,13 +27,15 @@ import os
 import logging
 import unittest
 from decimal import Decimal
-from service.models import Product, Category, db
+from service.models import Product, Category, db, DataValidationError
 from service import app
 from tests.factories import ProductFactory
 
 DATABASE_URI = os.getenv(
     "DATABASE_URI", "postgresql://postgres:postgres@localhost:5432/postgres"
 )
+
+logger = logging.getLogger("test_models")
 
 
 ######################################################################
@@ -104,3 +106,170 @@ class TestProductModel(unittest.TestCase):
     #
     # ADD YOUR TEST CASES HERE
     #
+    def test_read_a_product(self):
+        """It should Find a Product that has been created"""
+        product = ProductFactory()
+        logger.debug('Creating product %s', product)
+        product.id = None
+        product.create()
+        self.assertIsNotNone(product.id)
+
+        # Fetch the newly created product and verify that properties match
+        # what was sent
+        found_product = Product.find(product.id)
+        self.assertEqual(found_product.name, product.name)
+        self.assertEqual(found_product.description, product.description)
+        self.assertEqual(Decimal(found_product.price), product.price)
+        self.assertEqual(found_product.available, product.available)
+        self.assertEqual(found_product.category, product.category)
+
+    def test_update_a_product(self):
+        """It should Update a Product with new properties"""
+        product = ProductFactory()
+        logger.debug('Creating product %s', product)
+        product.id = None
+        product.create()
+        self.assertIsNotNone(product.id)
+        logger.debug('Product created: %s', product)
+
+        # Update description property
+        product.description = 'This is the updated product description.'
+        original_id = product.id
+        product.update()
+        logger.debug('Product updated: %s', product)
+        self.assertEqual(product.id, original_id)
+        self.assertEqual(product.description, 'This is the updated product description.')
+
+    def test_delete_a_product(self):
+        """It should Delete a Product"""
+        product = ProductFactory()
+        logger.debug('Creating product %s', product)
+        product.id = None
+        product.create()
+        self.assertIsNotNone(product.id)
+
+        # Make sure there's only one product in the database
+        all_products = Product.all()
+        self.assertEqual(len(all_products), 1)
+
+        # Delete the product from the database and make sure that there
+        # are now no products in the database
+        product.delete()
+        logger.debug('Product %s deleted', product)
+        all_products = Product.all()
+        self.assertEqual(len(all_products), 0)
+
+    def test_list_all_products(self):
+        """It should list All Products"""
+        # Make sure there are no products in the database
+        all_products = Product.all()
+        self.assertEqual(len(all_products), 0)
+
+        # Add 5 products to the database
+        for _ in range(5):
+            product = ProductFactory()
+            logger.debug('Creating product %s', product)
+            product.create()
+
+        # Make sure that there are now 5 objects in the database
+        all_products = Product.all()
+        self.assertEqual(len(all_products), 5)
+
+    def test_find_by_name(self):
+        """It should Find a Product by Name"""
+        # Add 5 products to the database
+        products = ProductFactory.create_batch(5)
+        for product in products:
+            product.create()
+
+        name = products[0].name
+        count = len([product for product in products if product.name == name])
+        found = Product.find_by_name(name)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.name, name)
+
+    def test_find_by_availability(self):
+        """It should Find a Product by Availability"""
+        # Add 10 products to the database
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.create()
+
+        available = products[0].available
+        count = len([product for product in products if product.available == available])
+        found = Product.find_by_availability(available)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.available, available)
+
+    def test_find_by_category(self):
+        """It should Find a Product by Category"""
+        # Add 10 products to the database
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.create()
+
+        category = products[0].category
+        count = len([product for product in products if product.category == category])
+        found = Product.find_by_category(category)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.category, category)
+
+    def test_update_a_product_with_no_id(self):
+        """It should Raise DataValidationError when Updating with no ID"""
+        product = ProductFactory()
+        logger.debug('Creating product %s', product)
+        product.id = None
+        product.create()
+        self.assertIsNotNone(product.id)
+        logger.debug('Product created: %s', product)
+
+        # Update description property
+        product.description = 'This is the updated product description.'
+        product.id = None
+        self.assertRaises(DataValidationError, product.update)
+
+    def test_deserialize_available_not_bool(self):
+        """It should Raise DataValidationError when Deserializing with Available not a Bool"""
+        product = ProductFactory()
+        dictionary = product.serialize()
+        dictionary['available'] = 'some string'
+        self.assertRaises(DataValidationError, product.deserialize, dictionary)
+
+    def test_deserialize_with_bad_data(self):
+        """It should Raise DataValidationError when Deserializing with bad data"""
+        product = Product()
+        dictionary = {
+            'price': 'some string'
+        }
+        self.assertRaises(DataValidationError, product.deserialize, dictionary)
+
+    def test_find_by_price(self):
+        """It should Find a Product by Price"""
+        # Add 10 products to the database
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.create()
+
+        price = products[0].price
+        count = len([product for product in products if product.price == price])
+        found = Product.find_by_price(price)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.price, price)
+
+    def test_find_by_price_str(self):
+        """It should Find a Product by Price as a String"""
+        # Add 10 products to the database
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.create()
+
+        price = products[0].price
+        count = len([product for product in products if product.price == price])
+        found = Product.find_by_price(str(price))
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.price, price)
